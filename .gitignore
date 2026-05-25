@@ -1,0 +1,5 @@
+.env
+__pycache__/
+*.pyc
+event_system/storage/*.json
+event_system/storage/*.csv
