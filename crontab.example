@@ -1,12 +1,8 @@
-# 事件驱动系统定时任务示例
-# 使用前修改 /path/to/EventDriven 为实际路径
-# 激活 conda/venv 环境后加入 crontab: crontab -e
+# 事件驱动系统定时任务
+# 安装: crontab -l 2>/dev/null | cat - crontab.example | crontab -
 
-# 每天 17:00 抓取龙虎榜并推送次日候选（周一至周五）
-0 17 * * 1-5 cd /path/to/EventDriven/event_system && python main.py >> /tmp/event_system_evening.log 2>&1
+# 工作日 17:20 抓取龙虎榜、识别席位、推送飞书日报
+20 17 * * 1-5 /Users/openclaw/openclaw_workspace/EventDriven/eventdriven_run.sh
 
-# 每天 7:30 推送当日事件预警（周一至周五）
-30 7 * * 1-5 cd /path/to/EventDriven/event_system && python main.py >> /tmp/event_system_morning.log 2>&1
-
-# 每周日 20:00 运行回测验证
-0 20 * * 0 cd /path/to/EventDriven/event_system && python backtest.py >> /tmp/event_system_backtest.log 2>&1
+# 每周日 20:00 运行回测验证（可选）
+0 20 * * 0 cd /Users/openclaw/openclaw_workspace/EventDriven/event_system && /Users/openclaw/miniforge3/bin/conda run -n eventdriven python backtest.py >> /Users/openclaw/openclaw_workspace/eventdriven_runtime/backtest.log 2>&1

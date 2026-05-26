@@ -10,6 +10,8 @@ from config import (
     POSITION_LIMITS,
     CHASE_LIMIT_DEFAULT,
     CHASE_LIMIT_RELAX,
+    SCORE_BONUS_NAMED_INST,
+    SCORE_BONUS_ANON_INST,
 )
 
 # 基础评分表（每个信号类型的底分）
@@ -101,6 +103,10 @@ def score_event(event: dict) -> int:
     for key, bonus in _BONUS_SCORES.items():
         if event.get(key):
             base += bonus
+
+    # 顶级机构席位加分
+    if event.get("has_named_inst"):   base += SCORE_BONUS_NAMED_INST  # 具名外资/顶级
+    if event.get("has_anon_inst"):    base += SCORE_BONUS_ANON_INST   # 匿名机构/北向专用
 
     # 复牌且是重组类
     if event.get("type") == "resumption" and event.get("is_restructure"):

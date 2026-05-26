@@ -42,7 +42,7 @@ if _use_proxy:
 
 import pandas as pd
 from config import NORTH_FLOW_DAYS
-from data_sources.lhb import fetch_lhb, fetch_lhb_detail
+from data_sources.lhb import fetch_lhb, fetch_lhb_detail, enrich_lhb_with_seats
 from data_sources.hk_connect import fetch_hk_connect_diff, fetch_north_flow
 from data_sources.announcements import (
     fetch_st_announcements,
@@ -79,7 +79,11 @@ def run(date: str | None = None, dry_run: bool = False, verbose: bool = False) -
 
     lhb = fetch_lhb(date)
     lhb_detail = fetch_lhb_detail(date)
-    print(f"  龙虎榜机构净买入: {len(lhb)} 只")
+    # 上榜日期直接从数据中读取（格式 YYYY-MM-DD）
+    lhb_date_display = date[:4] + "-" + date[4:6] + "-" + date[6:]
+    if "上榜日期" in lhb.columns:
+        lhb_date_display = str(lhb["上榜日期"].iloc[0]) if not lhb.empty else lhb_date_display
+    print(f"  龙虎榜机构净买入: {len(lhb)} 只  上榜日: {lhb_date_display}")
 
     st_df = fetch_st_announcements()
     print(f"  ST摘帽/扭亏公告:  {len(st_df)} 条")
@@ -153,6 +157,17 @@ def run(date: str | None = None, dry_run: bool = False, verbose: bool = False) -
     collusion_count = sum(1 for e in enriched if e.get("collusion"))
     print(f"  对倒嫌疑: {collusion_count} 只（已一票否决）")
 
+    # ── 4b. 席位明细抓取（仅 lhb_inst_buy 类型，逐股调用）────────────────────
+    print("\n[3b/5] 席位识别...")
+    enriched = enrich_lhb_with_seats(enriched, date)
+    # 注入上榜日期
+    for ev in enriched:
+        if ev.get("type") == "lhb_inst_buy":
+            ev.setdefault("lhb_date", lhb_date_display)
+    named_cnt = sum(1 for e in enriched if e.get("has_named_inst"))
+    anon_cnt  = sum(1 for e in enriched if e.get("has_anon_inst"))
+    print(f"  具名顶级机构: {named_cnt} 只  |  匿名机构/北向席位: {anon_cnt} 只")
+
     # ── 5. 评分 & 过滤 ────────────────────────────────────────────────────────
     print("\n[4/5] 评分与过滤...")
 
@@ -167,20 +182,25 @@ def run(date: str | None = None, dry_run: bool = False, verbose: bool = False) -
     # ── verbose：打印所有原始事件得分（含未过阈值的）────────────────────────
     if verbose and merged_events:
         print("\n[详细] 所有检测事件得分（含未达阈值）:")
-        from engine.scoring import score_event, _BASE_SCORES
+        from engine.scoring import score_event
+        from notify.feishu import _fmt_amount
         for ev in sorted(merged_events, key=lambda x: -score_event(x)):
             s = score_event(ev)
             extra = "/".join(ev.get("extra_types", []))
             label = f"+[{extra}]" if extra else ""
-            print(f"  [{ev['code']}] {ev.get('name',''):8s} 类型:{ev['type']}{label:20s} 得分:{s:3d}")
+            print(f"  [{ev['code']}] {ev.get('name',''):8s} 类型:{ev['type']}{label:20s} 得分:{s:3d}  {ev.get('lhb_date','')}")
+            for seat in ev.get("seat_named", []):
+                print(f"      🏦 【顶级席位】{seat['name']}  买入 {_fmt_amount(seat['buy_yuan'])}")
+            for seat in ev.get("seat_anon", []):
+                print(f"      🏢 【机构席位】{seat['name']}  买入 {_fmt_amount(seat['buy_yuan'])}")
 
     # ── 6. 推送 ───────────────────────────────────────────────────────────────
     print("\n[5/5] 推送结果...")
 
-    if not dry_run:
-        send_daily_report(final, macro_event)
+    if dry_run:
+        print("  [dry-run] 本地预览，不推送飞书:")
+        send_daily_report(final, macro_event, local_only=True)
     else:
-        print("  [dry-run] 跳过推送，打印结果:")
         send_daily_report(final, macro_event)
 
     return final
